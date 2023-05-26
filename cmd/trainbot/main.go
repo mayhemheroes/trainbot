@@ -22,6 +22,7 @@ import (
 	"github.com/jo-m/trainbot/internal/pkg/stitch"
 	"github.com/jo-m/trainbot/internal/pkg/upload"
 	"github.com/jo-m/trainbot/pkg/imutil"
+	"github.com/jo-m/trainbot/pkg/thermal"
 	"github.com/jo-m/trainbot/pkg/vid"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
@@ -30,25 +31,26 @@ import (
 type config struct {
 	logging.LogConfig
 
-	InputFile          string `arg:"--input" help:"Video4linux device file or regular video file, e.g. /dev/video0, video.mp4"`
-	CameraFormatFourCC string `arg:"--camera-format-fourcc" default:"MJPG" help:"Camera pixel format FourCC string, ignored if using video file"`
-	CameraW            int    `arg:"--camera-w" default:"1920" help:"Camera frame size width, ignored if using video file or picam3"`
-	CameraH            int    `arg:"--camera-h" default:"1080" help:"Camera frame size height, ignored if using video file or picam3"`
+	InputFile          string `arg:"--input,env:INPUT" help:"Video4linux device file or regular video file, e.g. /dev/video0, video.mp4, or 'picam3'" placeholder:"FILE"`
+	CameraFormatFourCC string `arg:"--camera-format-fourcc,env:CAMERA_FORMAT_FOURCC" default:"MJPG" help:"Camera pixel format FourCC string, ignored if using video file" placeholder:"CODE"`
+	CameraW            int    `arg:"--camera-w,env:CAMERA_W" default:"1920" help:"Camera frame size width, ignored if using video file or picam3" placeholder:"X"`
+	CameraH            int    `arg:"--camera-h,env:CAMERA_H" default:"1080" help:"Camera frame size height, ignored if using video file or picam3" placeholder:"Y"`
 
-	RectX uint `arg:"-X" help:"Rect to look at, x (left)"`
-	RectY uint `arg:"-Y" help:"Rect to look at, y (top)"`
-	RectW uint `arg:"-W" help:"Rect to look at, width"`
-	RectH uint `arg:"-H" help:"Rect to look at, height"`
+	RectX uint `arg:"-X,--rect-x,env:RECT_X" help:"Rect to look at, x (left)" placeholder:"N"`
+	RectY uint `arg:"-Y,--rect-y,env:RECT_Y" help:"Rect to look at, y (top)" placeholder:"N"`
+	RectW uint `arg:"-W,--rect-w,env:RECT_W" help:"Rect to look at, width" placeholder:"N"`
+	RectH uint `arg:"-H,--rect-h,env:RECT_H" help:"Rect to look at, height" placeholder:"N"`
 
-	PixelsPerM  float64 `arg:"--px-per-m" default:"45" help:"Pixels per meter, can be reconstructed from sleepers: they are usually 0.6m apart (in Europe)"`
-	MinSpeedKPH float64 `arg:"--min-speed-kph" default:"25" help:"Assumed train min speed, km/h"`
-	MaxSpeedKPH float64 `arg:"--max-speed-kph" default:"160" help:"Assumed train max speed, km/h"`
-	MinLengthM  float64 `arg:"--min-len-m" default:"5" help:"Minimum length of trains"`
+	PixelsPerM  float64 `arg:"--px-per-m,env:PX_PER_M" default:"45" help:"Pixels per meter, can be reconstructed from sleepers: they are usually 0.6m apart (in Europe)" placeholder:"K"`
+	MinSpeedKPH float64 `arg:"--min-speed-kph,env:MIN_SPEED_KPH" default:"25" help:"Assumed train min speed, km/h" placeholder:"K"`
+	MaxSpeedKPH float64 `arg:"--max-speed-kph,env:MAX_SPEED_KPH" default:"160" help:"Assumed train max speed, km/h" placeholder:"K"`
+	MinLengthM  float64 `arg:"--min-len-m,env:MIN_LEN_M" default:"5" help:"Minimum length of trains" placeholder:"K"`
 
-	CPUProfile  bool `arg:"--cpu-profile" help:"Write CPU profile"`
-	HeapProfile bool `arg:"--heap-profile" help:"Write memory heap profiles"`
+	CPUProfile  bool `arg:"--cpu-profile,env:CPU_PROFILE" help:"Write CPU profile"`
+	HeapProfile bool `arg:"--heap-profile,env:HEAP_PROFILE" help:"Write memory heap profiles"`
 
-	EnableUpload bool `arg:"--enable-upload" help:"Enable uploading of data."`
+	EnableUpload          bool `arg:"--enable-upload,env:ENABLE_UPLOAD" help:"Enable uploading of data."`
+	EnableTempMeasurement bool `arg:"--enable-temperature-measurement,env:ENABLE_TEMPERATURE_MEASUREMENT" help:"Enable periodic onboard temperature (thermal sensor) measurements to the database."`
 
 	upload.FTPConfig
 	upload.DataStore
@@ -96,7 +98,7 @@ func openSrc(c config) (vid.Src, error) {
 		return vid.NewPiCam3Src(vid.PiCam3Config{
 			Rect:      c.getRect(),
 			Focus:     0,
-			Rotate180: true,
+			Rotate180: false,
 			Format:    vid.FourCCFromString(c.CameraFormatFourCC),
 			FPS:       30,
 		})
@@ -232,7 +234,7 @@ func processTrains(store upload.DataStore, dbx *sqlx.DB, trainsIn <-chan *stitch
 		}
 		log.Debug().Str("gifFileName", gifFileName).Msg("wrote GIF")
 
-		id, err := db.Insert(dbx, *train, imgFileName, gifFileName)
+		id, err := db.InsertTrain(dbx, *train, imgFileName, gifFileName)
 		if err != nil {
 			log.Err(err).Send()
 		}
@@ -325,6 +327,23 @@ func deleteOldBlobsForever(store upload.DataStore, dbx *sqlx.DB) {
 	}
 }
 
+func measureTempForever(dbx *sqlx.DB) {
+	for ; true; <-time.Tick(time.Minute * 15) {
+		temp, err := thermal.MeasureDegC()
+		if err != nil {
+			log.Err(err).Msg("failed to read temperature")
+			continue
+		}
+
+		log.Info().Float64("tempDegC", temp).Msg("current temperature")
+
+		_, err = db.InsertTemp(dbx, time.Now(), temp)
+		if err != nil {
+			log.Err(err).Msg("failed to write temperature to database")
+		}
+	}
+}
+
 func main() {
 	c := parseCheckArgs()
 
@@ -368,6 +387,9 @@ func main() {
 	if c.EnableUpload {
 		go uploadForever(c.DataStore, dbx, c.FTPConfig)
 		go deleteOldBlobsForever(c.DataStore, dbx)
+	}
+	if c.EnableTempMeasurement {
+		go measureTempForever(dbx)
 	}
 
 	detectTrainsForever(c, trains)

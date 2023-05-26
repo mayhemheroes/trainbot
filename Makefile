@@ -4,7 +4,7 @@ DOCKER_BUILDER_IMG_TAG = trainbot-builder
 DOCKER_TMP_CONTAINER_NAME = trainbot-tmp-container
 
 # https://hub.docker.com/_/debian
-DOCKER_BASE_IMAGE = debian:bullseye-20230502
+DOCKER_BASE_IMAGE = debian:bullseye-20230522
 # https://go.dev/dl/
 GO_VERSION = 1.20.4
 GO_ARCHIVE_SHA256 = 698ef3243972a51ddb4028e4a1ac63dc6d60821bf18e59a807e051fee0a385bd
@@ -98,7 +98,11 @@ run_confighelper:
 run_camera:
 	go run ./cmd/trainbot \
 		--log-pretty \
-		--input /dev/video2 --camera-format-fourcc MJPG --camera-w 1920 --camera-h 1080 \
+		\
+		--enable-upload=false \
+		--input /dev/video2 \
+		--camera-format-fourcc MJPG \
+		--camera-w 1920 --camera-h 1080 \
 		-X 1064 -Y 178 -W 366 -H 334
 
 run_videofile:
@@ -107,6 +111,7 @@ run_videofile:
 		--log-pretty \
 		--log-level=info \
 		\
+		--enable-upload=false \
 		--input="internal/pkg/stitch/testdata/set0/day.mp4" \
 		-X 0 -Y 0 -W 300 -H 300
 

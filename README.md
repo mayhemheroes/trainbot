@@ -91,12 +91,12 @@ libcamera-vid \
    --timeout=0 \
    --inline \
    --nopreview \
-   --width 350 --height 280 \
-   --roi 0.368924,0.532407,0.151910,0.216049 \
+   --width 240 --height 280 \
+   --roi 0.429688,0.185185,0.104167,0.216049 \
    --mode=2304:1296:12:P \
    --framerate 30 \
    --autofocus-mode=manual --lens-position=0.000000 \
-   --rotation=180 \
+   --rotation=0 \
    -o vid.h264 --save-pts vid-timestamps.txt
 
 mkvmerge -o test.mkv --timecodes 0:vid-timestamps.txt vid.h264
@@ -119,13 +119,7 @@ The current production deployment is in a Tmux session...
 source ./env
 
 while true; do \
-./trainbot-arm64 \
-   --log-pretty --log-level=debug \
-   --input picam3 \
-   --camera-format-fourcc=MJPG \
-   -X 850 -Y 690 -W 350 -H 280 \
-   --px-per-m=42 \
-   --enable-upload; \
+  ./trainbot-arm64; \
 done
 ```
 
@@ -174,9 +168,9 @@ All database access happens in the browser via sql.js.
 - [x] Clean up frontend db/blob path handling
 - [x] Add favorites feature
 - [x] Stats page
+- [x] Create some screenshots
 - [ ] Correct for changing exposure, improve stitching seams
 - [ ] Add machine learning to classify trains (MobileNet, EfficientNet, https://mediapipe-studio.webapps.google.com/demo/image_classifier)
-- [ ] Create some screenshots
 - [ ] Better deployment setup, remove hardcoded stuff, document deployment
 - [ ] Deploy to Raspberry Pi via [gokrazy](https://gokrazy.org/)
 - [ ] Add run/deploy instructions to README (including confighelper)

@@ -23,10 +23,10 @@ const (
 type config struct {
 	logging.LogConfig
 
-	LiveReload bool   `arg:"--live-reload,env:LIVE_RELOAD" default:"false" help:"Do not bake in WWW static files (browser window reload is still needed)"`
-	ListenAddr string `arg:"--listen-addr,env:LISTEN_ADDR" default:"localhost:8080" help:"Address and port to listen on"`
+	LiveReload bool   `arg:"--live-reload" default:"false" help:"Do not bake in WWW static files (browser window reload is still needed)"`
+	ListenAddr string `arg:"--listen-addr" default:"localhost:8080" help:"Address and port to listen on"`
 
-	InputFile string `arg:"--input" help:"Video4linux device file, e.g. /dev/video0, or 'picam3'"`
+	InputFile string `arg:"--input,required" help:"Video4linux device file, e.g. /dev/video0, or 'picam3'"`
 	CameraW   int    `arg:"--camera-w" default:"1920" help:"Camera frame size width, ignored for picam3"`
 	CameraH   int    `arg:"--camera-h" default:"1080" help:"Camera frame size height, ignored for picam3"`
 
@@ -77,7 +77,7 @@ func main() {
 	if c.InputFile == inputFilePiCam3 {
 		src, err = vid.NewPiCam3Src(vid.PiCam3Config{
 			Focus:     0,
-			Rotate180: true,
+			Rotate180: false,
 			Format:    vid.FourCCMJPEG,
 			FPS:       5,
 		})
